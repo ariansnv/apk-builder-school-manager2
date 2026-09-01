@@ -1,35 +1,63 @@
 name: Build Android APK
 
 on:
-  workflow_dispatch:   # امکان اجرای دستی از تب Actions
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - 'android-app/**'
+      - 'app/**'
+      - 'gradlew'
+      - '.github/workflows/build-apk.yml'
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Detect Android project path
+        id: android
+        run: |
+          if [ -f "gradlew" ] && [ -d "app" ]; then
+            echo "root=." >> "$GITHUB_OUTPUT"
+            echo "Found Android project at repository root."
+          elif [ -f "android-app/gradlew" ] && [ -d "android-app/app" ]; then
+            echo "root=android-app" >> "$GITHUB_OUTPUT"
+            echo "Found Android project in android-app/."
+          else
+            echo "::error::Android project not found."
+            echo "Upload ONE of these layouts:"
+            echo "  A) gradlew + app/ at repo root (standalone apk-builder repo)"
+            echo "  B) android-app/gradlew + android-app/app/ (inside School-manager)"
+            echo ""
+            echo "Current repository files:"
+            ls -la
+            if [ -d android-app ]; then ls -la android-app; fi
+            exit 1
+          fi
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
+          distribution: temurin
           java-version: '17'
-          distribution: 'temurin'
 
-      - name: Setup Android SDK
+      - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x ./gradlew
-        working-directory: ./android-app   # اگر پروژه داخل پوشه android-app است
+      - name: Grant execute permission for Gradle
+        working-directory: ${{ steps.android.outputs.root }}
+        run: chmod +x gradlew
 
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug
-        working-directory: .
+      - name: Build debug APK
+        working-directory: ${{ steps.android.outputs.root }}
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: school-manager-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ steps.android.outputs.root }}/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 90
