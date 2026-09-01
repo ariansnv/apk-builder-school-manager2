@@ -1,0 +1,5 @@
+# Copy to local.properties and set sdk.dir (only needed for local CLI builds).
+# Example Windows:
+# sdk.dir=C\:\\Users\\YourName\\AppData\\Local\\Android\\Sdk
+#
+# GitHub Actions sets ANDROID_HOME automatically — no local.properties needed there.

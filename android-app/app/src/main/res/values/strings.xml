@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">مدرسه‌یار</string>
+    <!-- آدرس کامل سامانه را اینجا قرار دهید -->
+    <string name="app_start_url">http://10.0.2.2/School-manager/public/</string>
+</resources>
