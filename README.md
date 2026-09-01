@@ -20,11 +20,35 @@
 
 ### روش ۱ — GitHub Actions (پیشنهادی، بدون نصب چیزی روی ویندوز)
 
+**مهم:** روی GitHub باید **خود پروژه اندروید** باشد، نه فقط فایل workflow.
 
+#### اگر repo جداگانه ساختید (مثل `apk-builder-school-manager2`)
 
-1. پروژه را روی GitHub push کنید.
+محتوای پوشه `android-app/` را **در ریشه همان repo** کپی کنید:
 
-2. قبل از build، آدرس سامانه را در `app/src/main/res/values/strings.xml` تنظیم کنید:
+```
+your-repo/
+  .github/workflows/build-apk.yml
+  gradlew
+  gradlew.bat
+  gradle/
+  gradle.properties
+  settings.gradle
+  build.gradle
+  app/
+    build.gradle
+    src/main/...
+```
+
+یعنی `gradlew` و `app/` مستقیم در root باشند — **نه** داخل `android-app/`.
+
+#### اگر کل School-manager را push می‌کنید
+
+ساختار `android-app/gradlew` و `android-app/app/` کافی است؛ workflow هر دو حالت را خودکار تشخیص می‌دهد.
+
+---
+
+1. قبل از build، آدرس سامانه را در `app/src/main/res/values/strings.xml` تنظیم کنید:
 
 
 
@@ -158,18 +182,25 @@ cd android-app
 
 ## عیب‌یابی GitHub Actions
 
+### خطای `working directory ... android-app ... No such file or directory`
+
+پوشه `android-app` روی GitHub وجود ندارد. یا:
+
+- **repo جدا:** همه فایل‌های داخل `android-app/` را در **root** repo بگذارید، یا
+- **repo کامل:** کل پوشه `android-app/` را push کنید.
+
+Workflow جدید قبل از build وجود `gradlew` را چک می‌کند.
+
 ### خطای `Could not find or load main class "-Xmx64m"`
 
-فایل `android-app/gradlew` ناقص یا با خط‌پایان Windows (CRLF) push شده بود. نسخهٔ رسمی Gradle جایگزین شده. این فایل‌ها را commit و push کنید:
+1. فایل `gradlew` روی GitHub قدیمی/خراب است — نسخهٔ داخل School-manager را دوباره push کنید.
+2. حتماً **`gradle/wrapper/gradle-wrapper.jar`** هم commit شود (بدون این فایل build نمی‌شود).
+3. workflow جدید دیگر به `gradlew` shell وابسته نیست و مستقیم با Java اجرا می‌شود.
 
-- `android-app/gradlew`
-- `.gitattributes` (برای LF روی Linux)
+اگر `gradlew` را دستی اجرا می‌کنید:
 
-در workflow از **`assembleDebug`** استفاده کنید، نه `build`:
-
-```yaml
-run: ./gradlew assembleDebug --no-daemon
-working-directory: android-app
+```bash
+java -classpath gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain assembleDebug
 ```
 
 ---

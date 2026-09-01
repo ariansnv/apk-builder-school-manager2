@@ -1,0 +1,11 @@
+# Keep Gradle wrapper JAR in git (required for CI)
+!gradle/wrapper/gradle-wrapper.jar
+
+# Local / build outputs
+.gradle/
+build/
+app/build/
+local.properties
+*.iml
+.idea/
+.DS_Store
