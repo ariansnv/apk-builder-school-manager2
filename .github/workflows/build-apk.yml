@@ -52,7 +52,6 @@ jobs:
           echo "$RESPONSE" > branding.json
           cat branding.json
 
-          # بررسی‌های مهم
           if ! echo "$RESPONSE" | grep -q '"ok":\s*true'; then
             echo "::error::API did not return ok: true"
             exit 1
@@ -75,15 +74,23 @@ jobs:
         working-directory: ${{ steps.android.outputs.root }}
         run: chmod +x gradlew
 
+      - name: Install Python dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install Pillow
+
       - name: Apply branding
         working-directory: ${{ steps.android.outputs.root }}
         run: |
           if [ -f "scripts/apply_apk_branding.py" ]; then
-            python3 scripts/apply_apk_branding.py "${{ inputs.branding_url }}"
+            echo "Running apply_apk_branding.py ..."
+            python3 scripts/apply_apk_branding.py . "${{ inputs.branding_url }}"
           elif [ -f "scripts/apply-apk-branding.sh" ]; then
             bash scripts/apply-apk-branding.sh "${{ inputs.branding_url }}"
           else
-            echo "::warning::No branding script found. Building without custom branding."
+            echo "::error::Branding script not found in $(pwd)"
+            ls -la scripts/ || true
+            exit 1
           fi
 
       - name: Build debug APK
