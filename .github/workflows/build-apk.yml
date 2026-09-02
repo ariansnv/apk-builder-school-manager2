@@ -2,13 +2,11 @@ name: Build Android APK
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main, master]
-    paths:
-      - 'android-app/**'
-      - 'app/**'
-      - 'gradlew'
-      - '.github/workflows/build-apk.yml'
+    inputs:
+      branding_url:
+        description: 'آدرس کامل API برندینگ (مثال: https://my.emamhadischool.ir/public/api/pwa/apk-branding)'
+        required: true
+        type: string
 
 jobs:
   build:
@@ -28,13 +26,39 @@ jobs:
             echo "Found Android project in android-app/."
           else
             echo "::error::Android project not found."
-            echo "Upload ONE of these layouts:"
-            echo "  A) gradlew + app/ at repo root (standalone apk-builder repo)"
-            echo "  B) android-app/gradlew + android-app/app/ (inside School-manager)"
-            echo ""
-            echo "Current repository files:"
             ls -la
             if [ -d android-app ]; then ls -la android-app; fi
+            exit 1
+          fi
+
+      - name: Validate branding URL
+        run: |
+          URL="${{ inputs.branding_url }}"
+          if [[ ! "$URL" =~ ^https:// ]]; then
+            echo "::error::branding_url must start with https://"
+            exit 1
+          fi
+          echo "Branding URL is valid: $URL"
+
+      - name: Fetch and validate branding API
+        id: branding
+        run: |
+          URL="${{ inputs.branding_url }}"
+          echo "Fetching branding from: $URL"
+          RESPONSE=$(curl -s -f "$URL") || {
+            echo "::error::Failed to fetch branding API"
+            exit 1
+          }
+          echo "$RESPONSE" > branding.json
+          cat branding.json
+
+          # بررسی‌های مهم
+          if ! echo "$RESPONSE" | grep -q '"ok":\s*true'; then
+            echo "::error::API did not return ok: true"
+            exit 1
+          fi
+          if echo "$RESPONSE" | grep -q 'example.com'; then
+            echo "::error::start_url still contains example.com — fix it in admin panel"
             exit 1
           fi
 
@@ -50,6 +74,17 @@ jobs:
       - name: Grant execute permission for Gradle
         working-directory: ${{ steps.android.outputs.root }}
         run: chmod +x gradlew
+
+      - name: Apply branding
+        working-directory: ${{ steps.android.outputs.root }}
+        run: |
+          if [ -f "scripts/apply_apk_branding.py" ]; then
+            python3 scripts/apply_apk_branding.py "${{ inputs.branding_url }}"
+          elif [ -f "scripts/apply-apk-branding.sh" ]; then
+            bash scripts/apply-apk-branding.sh "${{ inputs.branding_url }}"
+          else
+            echo "::warning::No branding script found. Building without custom branding."
+          fi
 
       - name: Build debug APK
         working-directory: ${{ steps.android.outputs.root }}
