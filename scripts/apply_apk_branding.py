@@ -28,8 +28,12 @@ def main() -> int:
         with urllib.request.urlopen(source, timeout=30) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
     else:
-        with open(source, encoding="utf-8") as f:
-            payload = json.load(f)
+        print(
+            "ERROR: branding_url must be a full URL starting with https:// "
+            f"(got: {source!r})",
+            file=sys.stderr,
+        )
+        return 1
 
     app_name = (payload.get("app_name") or "School Manager").strip()
     start_url = (payload.get("start_url") or "https://example.com/").strip()
@@ -143,6 +147,16 @@ def main() -> int:
                 f.write(text)
 
     print(f"Applied branding: {app_name} / v{version_code} ({branding_hash})")
+    print(f"Start URL: {start_url}")
+
+    with open(strings_path, encoding="utf-8") as f:
+        written = f.read()
+    if "example.com" in written:
+        print("ERROR: start_url still points to example.com — branding fetch failed", file=sys.stderr)
+        return 1
+    if app_name not in written and escape(app_name) not in written:
+        print(f"WARNING: app_name {app_name!r} may not have been written correctly", file=sys.stderr)
+
     return 0
 
 
