@@ -1,7 +1,9 @@
 # Keep Gradle wrapper JAR in git (required for CI)
 !gradle/wrapper/gradle-wrapper.jar
 
-# Local / build outputs
+# Release keystore (generated in CI, cached — do not commit secrets)
+release.keystore
+*.jks
 .gradle/
 build/
 app/build/
