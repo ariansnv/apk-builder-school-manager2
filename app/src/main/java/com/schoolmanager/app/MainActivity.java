@@ -80,17 +80,32 @@ public class MainActivity extends Activity {
             return;
         }
         webLoaded = true;
-        webView.loadUrl(getString(R.string.app_start_url));
+        webView.loadUrl(normalizeStartUrl(getString(R.string.app_start_url)));
+    }
+
+    private String normalizeStartUrl(String url) {
+        if (url == null || url.trim().isEmpty()) {
+            return "about:blank";
+        }
+        String trimmed = url.trim();
+        return trimmed.endsWith("/") ? trimmed : trimmed + "/";
+    }
+
+    private String joinApiPath(String path) {
+        String base = normalizeStartUrl(getString(R.string.app_start_url));
+        if (path.startsWith("/")) {
+            path = path.substring(1);
+        }
+        return base + path;
     }
 
     private void checkForUpdate(boolean initial) {
         new Thread(() -> {
             try {
-                String startUrl = getString(R.string.app_start_url);
-                String base = startUrl.endsWith("/") ? startUrl : startUrl + "/";
                 int versionCode = BuildConfig.VERSION_CODE;
                 String brandingHash = getString(R.string.app_branding_hash);
-                String checkUrl = base + "api/pwa/app-update?version_code=" + versionCode
+                String checkUrl = joinApiPath("api/pwa/app-update")
+                        + "?version_code=" + versionCode
                         + "&branding_hash=" + Uri.encode(brandingHash);
 
                 HttpURLConnection conn = (HttpURLConnection) new URL(checkUrl).openConnection();
@@ -130,7 +145,7 @@ public class MainActivity extends Activity {
 
                 String message = json.optString("message",
                         "نسخه جدید منتشر شده است. لطفاً آخرین نسخه را نصب کنید.");
-                String downloadUrl = json.optString("download_url", base + "app/apk");
+                String downloadUrl = json.optString("download_url", joinApiPath("app/apk"));
 
                 mainHandler.post(() -> showUpdateDialog(message, downloadUrl));
             } catch (Exception ignored) {
