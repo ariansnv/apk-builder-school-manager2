@@ -2,7 +2,11 @@ package com.schoolmanager.app;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
@@ -12,6 +16,8 @@ import android.os.Looper;
 import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.CookieManager;
+import android.webkit.JavascriptInterface;
+import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -26,10 +32,14 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
 public class MainActivity extends Activity {
+    private static final int NOTIFICATION_PERMISSION_CODE = 4101;
+    private static final String CHANNEL_ID = "school_manager_alerts";
+
     private WebView webView;
     private boolean updateBlocked = false;
     private boolean webLoaded = false;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private int notificationSeq = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -40,6 +50,9 @@ public class MainActivity extends Activity {
             window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
             window.setStatusBarColor(Color.parseColor("#2563eb"));
         }
+
+        createNotificationChannel();
+        requestNotificationPermission();
 
         webView = new WebView(this);
         setContentView(webView);
@@ -53,6 +66,94 @@ public class MainActivity extends Activity {
         if (!updateBlocked) {
             checkForUpdate(false);
         }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == NOTIFICATION_PERMISSION_CODE && webView != null) {
+            webView.reload();
+        }
+    }
+
+    private void requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(
+                        new String[]{android.Manifest.permission.POST_NOTIFICATIONS},
+                        NOTIFICATION_PERMISSION_CODE
+                );
+            }
+        }
+    }
+
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return;
+        }
+        NotificationChannel channel = new NotificationChannel(
+                CHANNEL_ID,
+                getString(R.string.app_name),
+                NotificationManager.IMPORTANCE_HIGH
+        );
+        channel.setDescription("اعلان‌ها و پیام‌های سامانه");
+        channel.enableVibration(true);
+        channel.enableLights(true);
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager != null) {
+            manager.createNotificationChannel(channel);
+        }
+    }
+
+    private void showNativeNotification(String title, String body, String url) {
+        if (Build.VERSION.SDK_INT >= 33) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED) {
+                return;
+            }
+        }
+
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager == null) {
+            return;
+        }
+
+        String safeTitle = title == null || title.trim().isEmpty() ? getString(R.string.app_name) : title.trim();
+        String safeBody = body == null ? "" : body.trim();
+        String targetUrl = url == null || url.trim().isEmpty()
+                ? normalizeStartUrl(getString(R.string.app_start_url))
+                : url.trim();
+
+        Intent intent = new Intent(this, MainActivity.class);
+        intent.setAction(Intent.ACTION_VIEW);
+        intent.setData(Uri.parse(targetUrl));
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+
+        int id = ++notificationSeq;
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            flags |= PendingIntent.FLAG_IMMUTABLE;
+        }
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, id, intent, flags);
+
+        android.app.Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                ? new android.app.Notification.Builder(this, CHANNEL_ID)
+                : new android.app.Notification.Builder(this);
+
+        builder.setContentTitle(safeTitle)
+                .setContentText(safeBody)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setAutoCancel(true)
+                .setContentIntent(pendingIntent)
+                .setPriority(android.app.Notification.PRIORITY_HIGH)
+                .setCategory(android.app.Notification.CATEGORY_MESSAGE);
+
+        if (safeBody.isEmpty()) {
+            builder.setContentText("پیام جدید");
+        }
+
+        manager.notify(id, builder.build());
     }
 
     private void configureWebView() {
@@ -71,8 +172,40 @@ public class MainActivity extends Activity {
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
 
+        webView.addJavascriptInterface(new NativeBridge(), "SchoolManagerNative");
+
         webView.setWebViewClient(new WebViewClient());
-        webView.setWebChromeClient(new WebChromeClient());
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public void onPermissionRequest(final PermissionRequest request) {
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
+                    return;
+                }
+                runOnUiThread(() -> {
+                    try {
+                        request.grant(request.getResources());
+                    } catch (Exception ignored) {
+                        request.deny();
+                    }
+                });
+            }
+        });
+    }
+
+    private final class NativeBridge {
+        @JavascriptInterface
+        public void showNotification(String title, String body, String url) {
+            mainHandler.post(() -> showNativeNotification(title, body, url));
+        }
+
+        @JavascriptInterface
+        public boolean notificationsAllowed() {
+            if (Build.VERSION.SDK_INT >= 33) {
+                return checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                        == PackageManager.PERMISSION_GRANTED;
+            }
+            return true;
+        }
     }
 
     private void loadAppUrl() {

@@ -105,7 +105,7 @@ def main() -> int:
     colors_path = os.path.join(root, "app/src/main/res/values/ic_launcher_colors.xml")
     with open(colors_path, "w", encoding="utf-8") as f:
         f.write("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<resources>\n")
-        f.write(f"    <color name=\"ic_launcher_background\">#{theme}</color>\n")
+        f.write("    <color name=\"ic_launcher_background\">#00000000</color>\n")
         f.write("</resources>\n")
 
     host = re.sub(r"^https?://", "", start_url).split("/")[0].split(":")[0]
@@ -171,27 +171,28 @@ def main() -> int:
             for folder, size in sizes.items():
                 out_dir = os.path.join(root, "app/src/main/res", folder)
                 os.makedirs(out_dir, exist_ok=True)
-                resized = img.resize((size, size), Image.LANCZOS)
-                resized.save(os.path.join(out_dir, "ic_launcher.png"), "PNG")
-                resized.save(os.path.join(out_dir, "ic_launcher_round.png"), "PNG")
-            fg_path = os.path.join(root, "app/src/main/res/drawable/ic_launcher_foreground.png")
-            os.makedirs(os.path.dirname(fg_path), exist_ok=True)
-            img.resize((108, 108), Image.LANCZOS).save(fg_path, "PNG")
+                canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+                fitted = img.copy()
+                fitted.thumbnail((size, size), Image.LANCZOS)
+                offset = ((size - fitted.width) // 2, (size - fitted.height) // 2)
+                canvas.paste(fitted, offset, fitted)
+                canvas.save(os.path.join(out_dir, "ic_launcher.png"), "PNG")
+                canvas.save(os.path.join(out_dir, "ic_launcher_round.png"), "PNG")
+
+            # Legacy PNG icons only — no adaptive layer with colored background.
+            anydpi = os.path.join(root, "app/src/main/res/mipmap-anydpi-v26")
+            if os.path.isdir(anydpi):
+                for name in ("ic_launcher.xml", "ic_launcher_round.xml"):
+                    path = os.path.join(anydpi, name)
+                    if os.path.isfile(path):
+                        os.remove(path)
+
+            fg_png = os.path.join(root, "app/src/main/res/drawable/ic_launcher_foreground.png")
+            if os.path.isfile(fg_png):
+                os.remove(fg_png)
             fg_xml = os.path.join(root, "app/src/main/res/drawable/ic_launcher_foreground.xml")
             if os.path.isfile(fg_xml):
                 os.remove(fg_xml)
-            anydpi = os.path.join(root, "app/src/main/res/mipmap-anydpi-v26")
-            os.makedirs(anydpi, exist_ok=True)
-            adaptive = """<?xml version="1.0" encoding="utf-8"?>
-<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@color/ic_launcher_background" />
-    <foreground android:drawable="@drawable/ic_launcher_foreground" />
-</adaptive-icon>
-"""
-            with open(os.path.join(anydpi, "ic_launcher.xml"), "w", encoding="utf-8") as f:
-                f.write(adaptive)
-            with open(os.path.join(anydpi, "ic_launcher_round.xml"), "w", encoding="utf-8") as f:
-                f.write(adaptive)
 
             manifest_path = os.path.join(root, "app/src/main/AndroidManifest.xml")
             if os.path.isfile(manifest_path):
