@@ -1,0 +1,157 @@
+name: Build Android APK
+
+# Manual build — Actions → "Build Android APK" → Run workflow
+# push on this file alone registers the workflow in the Actions UI (job is skipped).
+on:
+  workflow_dispatch:
+    inputs:
+      branding_url:
+        description: 'Full HTTPS branding API (Admin → Mobile app → Branding API)'
+        required: true
+        type: string
+  push:
+    paths:
+      - '.github/workflows/build-apk.yml'
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: build-android-apk
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build signed APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    # Only build when started manually with branding_url
+    if: github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect Android project path
+        id: android
+        run: |
+          set -euo pipefail
+          if [ -f android-app/gradlew ] && [ -d android-app/app ]; then
+            echo "root=android-app" >> "$GITHUB_OUTPUT"
+          elif [ -f gradlew ] && [ -d app ]; then
+            echo "root=." >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Android project not found. Expected android-app/ in the repository."
+            ls -la
+            exit 1
+          fi
+          echo "Using Android root: $(grep root= "$GITHUB_OUTPUT" | tail -1)"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'tools platform-tools platforms;android-34 build-tools;34.0.0'
+          accept-android-sdk-licenses: true
+
+      - name: Install Pillow for icon generation
+        run: python3 -m pip install --user Pillow
+
+      - name: Validate branding API
+        working-directory: ${{ steps.android.outputs.root }}
+        env:
+          BRANDING_URL: ${{ inputs.branding_url }}
+        run: |
+          set -euo pipefail
+          BRANDING_URL="$(echo -n "$BRANDING_URL" | tr -d '\r' | xargs)"
+          if [ -z "$BRANDING_URL" ]; then
+            echo "::error::branding_url is empty. Paste the full HTTPS URL from Admin → Mobile app."
+            exit 1
+          fi
+          bash scripts/verify-branding-api.sh "$BRANDING_URL"
+
+      - name: Apply branding from School Manager
+        working-directory: ${{ steps.android.outputs.root }}
+        env:
+          BRANDING_URL: ${{ inputs.branding_url }}
+        run: |
+          set -euo pipefail
+          BRANDING_URL="$(echo -n "$BRANDING_URL" | tr -d '\r' | xargs)"
+          bash scripts/apply-apk-branding.sh "$BRANDING_URL" .
+
+      - name: Cache release keystore
+        uses: actions/cache@v4
+        id: keystore
+        with:
+          path: ${{ steps.android.outputs.root }}/release.keystore
+          key: sm-apk-release-keystore-v1
+
+      - name: Prepare signing keystore
+        working-directory: ${{ steps.android.outputs.root }}
+        env:
+          KS_PASS_SECRET: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASS_SECRET: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          # Defaults must stay stable so cached keystore keeps working.
+          KS_PASS="${KS_PASS_SECRET:-SchoolManager2026!}"
+          KEY_PASS="${KEY_PASS_SECRET:-$KS_PASS}"
+          echo "::add-mask::$KS_PASS"
+          echo "::add-mask::$KEY_PASS"
+          {
+            echo "ANDROID_KEYSTORE_FILE=release.keystore"
+            echo "ANDROID_KEYSTORE_PASSWORD=$KS_PASS"
+            echo "ANDROID_KEY_ALIAS=schoolmanager"
+            echo "ANDROID_KEY_PASSWORD=$KEY_PASS"
+          } >> "$GITHUB_ENV"
+
+          if [ ! -f release.keystore ]; then
+            keytool -genkeypair -v -storetype PKCS12 -keystore release.keystore \
+              -alias schoolmanager -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$KS_PASS" -keypass "$KEY_PASS" \
+              -dname "CN=School Manager, OU=Mobile, O=Education, L=Tehran, C=IR"
+            echo "Created new release.keystore"
+          else
+            echo "Using cached release.keystore"
+          fi
+
+      - name: Build signed release APK
+        working-directory: ${{ steps.android.outputs.root }}
+        env:
+          GRADLE_OPTS: -Xmx2048m -Dorg.gradle.daemon=false
+        run: |
+          set -euo pipefail
+          chmod +x gradlew || true
+          # Invoke wrapper via bash so Windows CRLF checkouts never break the shebang.
+          bash ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Verify APK branding was applied
+        working-directory: ${{ steps.android.outputs.root }}
+        run: |
+          set -euo pipefail
+          STRINGS=app/src/main/res/values/strings.xml
+          APK=app/build/outputs/apk/release/app-release.apk
+          if grep -q 'example.com' "$STRINGS"; then
+            echo "::error::Branding NOT applied — start_url is still example.com."
+            echo "Use full branding_url: https://YOUR-DOMAIN/public/api/pwa/apk-branding"
+            cat "$STRINGS"
+            exit 1
+          fi
+          echo "Branding OK:"
+          grep -E 'app_name|app_start_url' "$STRINGS"
+          test -f "$APK"
+          ls -lh "$APK"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: school-manager-apk
+          path: ${{ steps.android.outputs.root }}/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 90
