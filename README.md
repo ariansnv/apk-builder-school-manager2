@@ -107,19 +107,31 @@ chmod +x scripts/verify-branding-api.sh
 
 روش پیشنهادی — بدون نصب Android Studio روی ویندوز.
 
+### لینک مستقیم ورکفلو
+
+```
+https://github.com/ariansnv/School-manager/actions/workflows/build-apk.yml
+```
+
+اگر ورکفلو در لیست دیده نمی‌شود، همین لینک را باز کنید.
+
 ### مرحله‌به‌مرحله
 
-1. **کد را push کنید**  
-   مطمئن شوید پوشه `android-app/` در repo هست.
+1. **کد را به `main` push کنید**  
+   باید این دو مسیر روی GitHub باشند:
+   - `.github/workflows/build-apk.yml`
+   - `android-app/`
 
 2. **تنظیمات پنل را ذخیره کنید**  
    (بخش ۲)
 
-3. **GitHub → تب Actions**
+3. **فعال بودن Actions**  
+   `Settings → Actions → General → Allow all actions and reusable workflows`  
+   سپس Save.
 
-4. **Workflow: `Build Android APK`**
+4. بروید به لینک مستقیم بالا، یا: **GitHub → Actions → از ستون چپ `Build Android APK`**
 
-5. **Run workflow** (دکمه سمت راست)
+5. **Run workflow** (دکمه سمت راست بالای لیست اجراها)
 
 6. فیلد **`branding_url`** — آدرس کامل API را paste کنید:
 
@@ -127,9 +139,19 @@ chmod +x scripts/verify-branding-api.sh
    https://my.emamhadischool.ir/public/api/pwa/apk-branding
    ```
 
-7. **Run workflow** را بزنید و صبر کنید (حدود ۳–۸ دقیقه).
+7. دوباره **Run workflow** را بزنید و صبر کنید (حدود ۳–۸ دقیقه).
 
 8. بعد از موفقیت → **Artifacts** → **`school-manager-apk`** → دانلود `app-release.apk`
+
+### اگر ورکفلو اصلاً دیده نمی‌شود
+
+| علت | کار |
+|-----|-----|
+| Actions خاموش است | Settings → Actions → Allow all actions |
+| فایل ورکفلو روی `main` نیست | push کنید؛ فقط شاخه پیش‌فرض دکمه Run را نشان می‌دهد |
+| دارید «New workflow» می‌بینید | از ستون چپ نام **Build Android APK** را انتخاب کنید |
+| دسترسی فقط خواندنی | با حسابی که Write دارد وارد شوید |
+| ورکفلو Disabled است | Actions → Build Android APK → ⋯ → Enable workflow |
 
 ### GitHub چه کار می‌کند؟
 
